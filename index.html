@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Task Tracker</h1>
+  <button id="addTaskBtn" class="btn btn-primary">+ Add Task</button>
+</header>
+
+<main>
+
+  <section class="summary" id="summary">
+    <div class="summary-card">
+      <span class="summary-count" id="countTotal">0</span>
+      <span class="summary-label">Total Tasks</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-count" id="countTodo">0</span>
+      <span class="summary-label">To Do</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-count" id="countInProgress">0</span>
+      <span class="summary-label">In Progress</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-count" id="countCompleted">0</span>
+      <span class="summary-label">Completed</span>
+    </div>
+  </section>
+
+  <section class="filters">
+    <label>
+      Status
+      <select id="filterStatus">
+        <option value="">All</option>
+        <option value="To Do">To Do</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Completed">Completed</option>
+        <option value="Pending">Pending</option>
+      </select>
+    </label>
+    <label>
+      Project
+      <select id="filterProject">
+        <option value="">All</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="task-list-wrapper">
+    <table class="task-table" id="taskTable">
+      <thead>
+        <tr>
+          <th>Task Name</th>
+          <th>Project</th>
+          <th>Week / Date</th>
+          <th>Status</th>
+          <th>Priority</th>
+          <th>Due Date</th>
+          <th>Work Done</th>
+          <th>Validation</th>
+          <th>Links</th>
+          <th>Notes / Next Steps</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="taskTableBody">
+      </tbody>
+    </table>
+    <p id="emptyState" class="empty-state" hidden>No tasks yet. Click "Add Task" to create one.</p>
+  </section>
+
+</main>
+
+<div id="taskModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h2 id="modalTitle">Add Task</h2>
+    <form id="taskForm">
+      <input type="hidden" id="taskId">
+
+      <label>Task Name
+        <input type="text" id="taskName" required>
+      </label>
+
+      <label>Project
+        <input type="text" id="taskProject">
+      </label>
+
+      <label>Week / Date
+        <input type="text" id="taskWeekDate" placeholder="e.g. Week 3 or 2026-09-14">
+      </label>
+
+      <div class="form-row">
+        <label>Status
+          <select id="taskStatus">
+            <option value="To Do">To Do</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Pending">Pending</option>
+          </select>
+        </label>
+
+        <label>Priority
+          <select id="taskPriority">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+          </select>
+        </label>
+
+        <label>Due Date
+          <input type="date" id="taskDueDate">
+        </label>
+      </div>
+
+      <label>Work Done
+        <textarea id="taskWorkDone" rows="2"></textarea>
+      </label>
+
+      <label>Validation
+        <textarea id="taskValidation" rows="2"></textarea>
+      </label>
+
+      <label>Links
+        <input type="text" id="taskLinks" placeholder="https://...">
+      </label>
+
+      <label>Notes / Next Steps
+        <textarea id="taskNotes" rows="2"></textarea>
+      </label>
+
+      <div class="modal-actions">
+        <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
