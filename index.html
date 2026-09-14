@@ -10,10 +10,30 @@
 
 <header class="app-header">
   <h1>Task Tracker</h1>
-  <button id="addTaskBtn" class="btn btn-primary">+ Add Task</button>
+  <div class="header-right">
+    <div id="userInfo" class="user-info" hidden>
+      <span id="userLabel" class="user-label"></span>
+      <button id="signOutBtn" class="btn btn-secondary">Sign Out</button>
+    </div>
+    <button id="addTaskBtn" class="btn btn-primary" hidden>+ Add Task</button>
+  </div>
 </header>
 
-<main>
+<p id="errorBanner" class="error-banner" hidden></p>
+
+<div id="loadingScreen" class="status-screen">
+  <p>Checking sign-in status...</p>
+</div>
+
+<div id="authScreen" class="status-screen" hidden>
+  <div class="auth-card">
+    <h2>Sign in to continue</h2>
+    <p>Sign in with your Google account to view and manage shared tasks.</p>
+    <button id="signInBtn" class="btn btn-primary">Sign in with Google</button>
+  </div>
+</div>
+
+<main id="appMain" hidden>
 
   <section class="summary" id="summary">
     <div class="summary-card">
@@ -143,6 +163,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

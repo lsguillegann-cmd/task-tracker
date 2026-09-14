@@ -1,7 +1,35 @@
-const STORAGE_KEY = 'taskTracker.tasks';
+import { firebaseConfig } from './firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-let tasks = loadTasks();
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const tasksCollection = collection(db, 'tasks');
+const tasksQuery = query(tasksCollection, orderBy('createdAt', 'desc'));
+
+let tasks = [];
 let editingTaskId = null;
+let currentUser = null;
+let unsubscribeTasks = null;
 
 const el = {
   addTaskBtn: document.getElementById('addTaskBtn'),
@@ -17,20 +45,33 @@ const el = {
   countTodo: document.getElementById('countTodo'),
   countInProgress: document.getElementById('countInProgress'),
   countCompleted: document.getElementById('countCompleted'),
+  authScreen: document.getElementById('authScreen'),
+  loadingScreen: document.getElementById('loadingScreen'),
+  appMain: document.getElementById('appMain'),
+  signInBtn: document.getElementById('signInBtn'),
+  signOutBtn: document.getElementById('signOutBtn'),
+  userInfo: document.getElementById('userInfo'),
+  userLabel: document.getElementById('userLabel'),
+  errorBanner: document.getElementById('errorBanner'),
 };
 
-function loadTasks() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.error('Failed to load tasks from localStorage', e);
-    return [];
-  }
+function showError(message) {
+  el.errorBanner.textContent = message;
+  el.errorBanner.hidden = false;
 }
 
-function saveTasks() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+function clearError() {
+  el.errorBanner.hidden = true;
+  el.errorBanner.textContent = '';
+}
+
+function setLoading(message) {
+  if (message) {
+    el.loadingScreen.querySelector('p').textContent = message;
+    el.loadingScreen.hidden = false;
+  } else {
+    el.loadingScreen.hidden = true;
+  }
 }
 
 function escapeHtml(str) {
@@ -153,8 +194,9 @@ function closeModal() {
   editingTaskId = null;
 }
 
-function handleFormSubmit(e) {
+async function handleFormSubmit(e) {
   e.preventDefault();
+  if (!currentUser) return;
 
   const taskData = {
     name: document.getElementById('taskName').value.trim(),
@@ -171,21 +213,41 @@ function handleFormSubmit(e) {
 
   if (!taskData.name) return;
 
-  if (editingTaskId) {
-    const idx = tasks.findIndex(t => t.id === editingTaskId);
-    if (idx !== -1) {
-      tasks[idx] = { ...tasks[idx], ...taskData };
-    }
-  } else {
-    tasks.push({ id: crypto.randomUUID(), ...taskData });
-  }
+  clearError();
+  const submitBtn = el.form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
 
-  saveTasks();
-  render();
-  closeModal();
+  const who = currentUser.displayName || currentUser.email || currentUser.uid;
+
+  try {
+    if (editingTaskId) {
+      await updateDoc(doc(db, 'tasks', editingTaskId), {
+        ...taskData,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.uid,
+        updatedByName: who,
+      });
+    } else {
+      await addDoc(tasksCollection, {
+        ...taskData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: currentUser.uid,
+        createdByName: who,
+        updatedBy: currentUser.uid,
+        updatedByName: who,
+      });
+    }
+    closeModal();
+  } catch (err) {
+    console.error('Failed to save task', err);
+    showError('Failed to save task: ' + err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
 
-function handleTableClick(e) {
+async function handleTableClick(e) {
   const editBtn = e.target.closest('.btn-edit');
   const deleteBtn = e.target.closest('.btn-delete');
 
@@ -197,12 +259,54 @@ function handleTableClick(e) {
   if (deleteBtn) {
     const task = tasks.find(t => t.id === deleteBtn.dataset.id);
     if (task && confirm(`Delete task "${task.name}"?`)) {
-      tasks = tasks.filter(t => t.id !== deleteBtn.dataset.id);
-      saveTasks();
-      render();
+      clearError();
+      try {
+        await deleteDoc(doc(db, 'tasks', deleteBtn.dataset.id));
+      } catch (err) {
+        console.error('Failed to delete task', err);
+        showError('Failed to delete task: ' + err.message);
+      }
     }
   }
 }
+
+function subscribeToTasks() {
+  setLoading('Loading tasks...');
+  unsubscribeTasks = onSnapshot(
+    tasksQuery,
+    (snapshot) => {
+      tasks = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setLoading(null);
+      clearError();
+      render();
+    },
+    (err) => {
+      console.error('Failed to load tasks', err);
+      setLoading(null);
+      showError('Failed to load tasks: ' + err.message);
+    }
+  );
+}
+
+el.signInBtn.addEventListener('click', async () => {
+  clearError();
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (err) {
+    console.error('Sign-in failed', err);
+    showError('Sign-in failed: ' + err.message);
+  }
+});
+
+el.signOutBtn.addEventListener('click', async () => {
+  clearError();
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.error('Sign-out failed', err);
+    showError('Sign-out failed: ' + err.message);
+  }
+});
 
 el.addTaskBtn.addEventListener('click', () => openModal());
 el.cancelBtn.addEventListener('click', closeModal);
@@ -214,4 +318,31 @@ el.tableBody.addEventListener('click', handleTableClick);
 el.filterStatus.addEventListener('change', renderTasks);
 el.filterProject.addEventListener('change', renderTasks);
 
-render();
+onAuthStateChanged(auth, (user) => {
+  currentUser = user;
+
+  if (unsubscribeTasks) {
+    unsubscribeTasks();
+    unsubscribeTasks = null;
+  }
+
+  setLoading(null);
+  clearError();
+
+  if (user) {
+    el.authScreen.hidden = true;
+    el.appMain.hidden = false;
+    el.addTaskBtn.hidden = false;
+    el.userInfo.hidden = false;
+    el.userLabel.textContent = user.displayName || user.email || 'Signed in';
+    subscribeToTasks();
+  } else {
+    closeModal();
+    el.authScreen.hidden = false;
+    el.appMain.hidden = true;
+    el.addTaskBtn.hidden = true;
+    el.userInfo.hidden = true;
+    tasks = [];
+    render();
+  }
+});

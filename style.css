@@ -35,6 +35,71 @@ body {
   margin: 0;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-info[hidden] {
+  display: none;
+}
+
+.user-label {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.error-banner {
+  margin: 16px 32px 0;
+  padding: 10px 16px;
+  background: #fde0e0;
+  color: #a13d3d;
+  border: 1px solid #f3b8b8;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+
+.status-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 24px;
+}
+
+.status-screen[hidden] {
+  display: none;
+}
+
+.auth-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 32px;
+  max-width: 380px;
+  text-align: center;
+}
+
+.auth-card h2 {
+  margin-top: 0;
+}
+
+.auth-card p {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.auth-card .btn {
+  margin-top: 8px;
+}
+
 main {
   max-width: 1200px;
   margin: 0 auto;
