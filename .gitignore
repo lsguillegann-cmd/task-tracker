@@ -1,1 +1,7 @@
 .wrangler/
+
+# Local, one-time migration tooling — must never be committed. Backups and
+# the source dataset both contain client business data that is not meant
+# to be public or checked into this repo.
+/scripts/migration-input/
+/scripts/backups/
