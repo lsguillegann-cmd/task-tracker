@@ -18,6 +18,9 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  getDocs,
+  writeBatch,
+  Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -699,3 +702,174 @@ onAuthStateChanged(auth, (user) => {
     render();
   }
 });
+
+// ============================================================================
+// ONE-TIME MANUAL MIGRATION — Weekly Ops Dashboard Artifact -> Firestore
+// ============================================================================
+// Defines window.__migrateArtifactTasks(tasks): a manually-invoked, one-time
+// import of the Artifact's 34 historical tasks into the production `tasks`
+// collection. Nothing in this block runs on page load, on sign-in, or as a
+// result of any UI interaction — it only becomes CALLABLE. It must be
+// invoked explicitly, once, from the browser DevTools console on the live
+// production page by a signed-in, approved user:
+//
+//   await window.__migrateArtifactTasks(ARTIFACT_TASKS)
+//
+// ARTIFACT_TASKS is the verified 34-item array of source task records, each
+// shaped as { id, name, project, weekDate, status, priority, dueDate,
+// workDone, validation, links, notes, createdAt, updatedAt }. It is supplied
+// at call time from a separate, un-deployed local file — never embedded
+// here, so the migration payload itself never ships in the deployed bundle.
+//
+// Remove this entire block in a follow-up cleanup commit once the one-time
+// import has been performed and verified.
+
+const MIGRATION_ID_PREFIX = 'artifact-';
+const MIGRATION_EXPECTED_TOTAL = 34;
+const MIGRATION_EXPECTED_COMPLETED = 29;
+const MIGRATION_EXPECTED_IN_PROGRESS = 5;
+const MIGRATION_EXPECTED_TODO_PENDING = 0;
+
+function validateMigrationSource(sourceTasks) {
+  if (!Array.isArray(sourceTasks) || sourceTasks.length !== MIGRATION_EXPECTED_TOTAL) {
+    throw new Error(`Expected exactly ${MIGRATION_EXPECTED_TOTAL} source tasks, got ${sourceTasks && sourceTasks.length}.`);
+  }
+  const counts = { Completed: 0, 'In Progress': 0, 'To Do': 0, Pending: 0 };
+  for (const t of sourceTasks) {
+    if (!t.id || !t.name || !(t.status in counts)) {
+      throw new Error(`Malformed source task: ${JSON.stringify(t).slice(0, 200)}`);
+    }
+    counts[t.status]++;
+  }
+  const todoPending = counts['To Do'] + counts['Pending'];
+  if (
+    counts.Completed !== MIGRATION_EXPECTED_COMPLETED ||
+    counts['In Progress'] !== MIGRATION_EXPECTED_IN_PROGRESS ||
+    todoPending !== MIGRATION_EXPECTED_TODO_PENDING
+  ) {
+    throw new Error(
+      `Aggregate mismatch: Completed=${counts.Completed} InProgress=${counts['In Progress']} ` +
+      `ToDo/Pending=${todoPending}. Refusing to proceed.`
+    );
+  }
+  return counts;
+}
+
+function migrationDownloadJson(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function migrateArtifactTasks(sourceTasks) {
+  // --- Preflight: auth + approval. Mirrors the Firestore Rules'
+  // isAllowedUser() check client-side as defense in depth — the write would
+  // be rejected server-side regardless, but this fails fast with a clear
+  // message and avoids an unnecessary round trip. ---
+  if (!currentUser) throw new Error('Migration aborted: no signed-in Firebase user.');
+  if (!currentUser.emailVerified) throw new Error('Migration aborted: signed-in user email is not verified.');
+  if (!isApproved(currentUser)) throw new Error('Migration aborted: signed-in user is not in APPROVED_EMAILS.');
+
+  // --- Preflight: source dataset shape ---
+  const counts = validateMigrationSource(sourceTasks);
+  console.log(`[migration] Source validated: ${sourceTasks.length} tasks ` +
+    `(${counts.Completed} Completed / ${counts['In Progress']} In Progress / ` +
+    `${counts['To Do'] + counts['Pending']} To Do-Pending).`);
+
+  // --- Read the full existing collection first. This single read serves
+  // two purposes: (a) the pre-migration backup/export, and (b) the
+  // duplicate-import check (scanning for any artifact-* IDs already
+  // present) — no separate reads needed for either. ---
+  const existingSnap = await getDocs(tasksCollection);
+  const existingDocs = existingSnap.docs.map((d) => ({ id: d.id, data: d.data() }));
+  console.log(`[migration] Read ${existingDocs.length} existing document(s) from tasks/.`);
+
+  const alreadyMigrated = existingDocs.filter((d) => d.id.startsWith(MIGRATION_ID_PREFIX));
+  if (alreadyMigrated.length > 0) {
+    console.error('[migration] ABORTING — artifact-* documents already exist:', alreadyMigrated.map((d) => d.id));
+    throw new Error(
+      `Migration aborted: ${alreadyMigrated.length} artifact-* document(s) already present ` +
+      `(${alreadyMigrated.map((d) => d.id).join(', ')}). No writes performed.`
+    );
+  }
+
+  if (existingDocs.length !== 1) {
+    console.warn('[migration] Existing collection is not exactly 1 document as expected:', existingDocs.map((d) => d.id));
+    throw new Error(
+      `Migration aborted: expected exactly 1 existing document, found ${existingDocs.length}. ` +
+      `Review before proceeding. No writes performed.`
+    );
+  }
+
+  // --- Backup: log in full and offer a downloadable JSON export. Firestore
+  // Timestamp values are converted to ISO strings so the export is plain,
+  // portable JSON. ---
+  const backup = existingDocs.map(({ id, data }) => ({
+    id,
+    data: Object.fromEntries(Object.entries(data).map(([k, v]) =>
+      [k, v && typeof v.toDate === 'function' ? v.toDate().toISOString() : v]
+    )),
+  }));
+  const backupFilename = `tasks-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  console.log('[migration] Pre-migration backup:', JSON.stringify(backup, null, 2));
+  migrationDownloadJson(backupFilename, backup);
+  console.log(`[migration] Backup downloaded as "${backupFilename}" and logged above. Verify it before continuing.`);
+
+  // --- Build the 34 write payloads. Historical createdAt/updatedAt are
+  // preserved from the Artifact source (converted to real Firestore
+  // Timestamps — required both for formatTimestamp()'s ts.toDate() call and
+  // for orderBy('createdAt','desc') to sort correctly, since Firestore
+  // orders by type before value). createdBy/createdByName/updatedBy/
+  // updatedByName follow the exact same pattern as every other task write
+  // in this app (see handleFormSubmit): they record the real signed-in
+  // Firebase user performing this write — i.e. who imported the task into
+  // Firestore, not who historically did the underlying work. This
+  // preserves production's real audit semantics rather than fabricating or
+  // omitting them. ---
+  const who = currentUser.displayName || currentUser.email || currentUser.uid;
+  const migratedAt = serverTimestamp();
+  const payloads = sourceTasks.map((t) => {
+    const { id: sourceId, createdAt, updatedAt, ...rest } = t;
+    return {
+      docId: MIGRATION_ID_PREFIX + sourceId,
+      data: {
+        ...rest,
+        createdAt: Timestamp.fromDate(new Date(createdAt)),
+        updatedAt: Timestamp.fromDate(new Date(updatedAt)),
+        createdBy: currentUser.uid,
+        createdByName: who,
+        updatedBy: currentUser.uid,
+        updatedByName: who,
+        migratedFromArtifact: true,
+        sourceArtifactTaskId: sourceId,
+        migratedAt,
+      },
+    };
+  });
+
+  const idSet = new Set(payloads.map((p) => p.docId));
+  if (idSet.size !== MIGRATION_EXPECTED_TOTAL) {
+    throw new Error('Migration aborted: computed document IDs are not unique.');
+  }
+
+  console.log(`[migration] About to write ${payloads.length} documents in one atomic batch:`, payloads.map((p) => p.docId));
+
+  // --- Atomic batched write. All 34 succeed together or none do. ---
+  const batch = writeBatch(db);
+  for (const { docId, data } of payloads) {
+    batch.set(doc(db, 'tasks', docId), data);
+  }
+  await batch.commit();
+
+  console.log(`[migration] DONE. Wrote ${payloads.length} documents. Existing document ` +
+    `(${existingDocs[0].id}) was not touched.`);
+  return { written: payloads.length, existingBefore: existingDocs.length, backupFilename };
+}
+
+window.__migrateArtifactTasks = migrateArtifactTasks;
