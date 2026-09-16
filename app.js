@@ -46,7 +46,19 @@ let currentUser = null;
 let unsubscribeTasks = null;
 let currentView = 'table'; // 'table' | 'report'
 
+// "Editing as" is an app-level attribution tag only — it has no bearing on
+// authentication or authorization. The signed-in Firebase user (currentUser)
+// remains the sole security identity; this just labels who was picked as the
+// acting editor at the time a task was written, for display purposes.
+let editorName = 'Wheng';
+try {
+  const savedEditor = localStorage.getItem('wod.editorName');
+  if (savedEditor === 'Wheng' || savedEditor === 'TJ') editorName = savedEditor;
+} catch (e) { /* storage unavailable — default stands */ }
+
 const el = {
+  editorSelect: document.getElementById('editorSelect'),
+  editorToggle: document.getElementById('editorToggle'),
   addTaskBtn: document.getElementById('addTaskBtn'),
   modal: document.getElementById('taskModal'),
   modalTitle: document.getElementById('modalTitle'),
@@ -172,6 +184,11 @@ function rowTitle(task) {
   }
   if (task.createdByName) {
     parts.push(`Created by ${task.createdByName} (${formatTimestamp(task.createdAt)})`);
+  }
+  // editorTag is an optional, backward-compatible attribution field — older
+  // tasks written before this field existed simply omit this line.
+  if (task.editorTag) {
+    parts.push(`Tagged as ${task.editorTag}`);
   }
   return parts.join('\n');
 }
@@ -408,6 +425,18 @@ function setView(view) {
   if (!isTable) renderReportView();
 }
 
+// Sets the app-level "Editing as" attribution tag. This has no effect on
+// Firebase Authentication or the APPROVED_EMAILS gate — it purely labels
+// which of the two known editors is acting, for display on tasks going
+// forward. The authenticated Firebase user remains the security identity.
+function setEditor(name) {
+  editorName = name;
+  try { localStorage.setItem('wod.editorName', name); } catch (e) { /* ignore */ }
+  [...el.editorToggle.querySelectorAll('button')].forEach((b) => {
+    b.classList.toggle('active', b.dataset.name === name);
+  });
+}
+
 function render() {
   populateFilterOptions();
   updateSummary();
@@ -448,6 +477,7 @@ function openDetails(task) {
     `<span class="badge ${statusBadgeClass(task.status)}">${escapeHtml(task.status)}</span>`,
     task.priority ? `<span class="badge ${priorityBadgeClass(task.priority)}">${escapeHtml(task.priority)}</span>` : '',
     task.dueDate ? `Due ${escapeHtml(task.dueDate)}` : '',
+    task.editorTag ? `Tagged: ${escapeHtml(task.editorTag)}` : '',
   ].filter(Boolean).join(' · ');
   el.detailsWorkDone.textContent = task.workDone || '—';
   el.detailsValidation.textContent = task.validation || '—';
@@ -476,6 +506,9 @@ async function handleFormSubmit(e) {
     validation: document.getElementById('taskValidation').value.trim(),
     links: document.getElementById('taskLinks').value.trim(),
     notes: document.getElementById('taskNotes').value.trim(),
+    // App-level attribution tag only — separate from the createdBy/updatedBy
+    // audit fields below, which stay driven by the authenticated Firebase user.
+    editorTag: editorName,
   };
 
   if (!taskData.name) return;
@@ -615,6 +648,12 @@ el.viewReportBtn.addEventListener('click', () => setView('report'));
 el.copyReportBtn.addEventListener('click', handleCopyReport);
 el.printReportBtn.addEventListener('click', () => window.print());
 
+el.editorToggle.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-name]');
+  if (btn) setEditor(btn.dataset.name);
+});
+setEditor(editorName);
+
 onAuthStateChanged(auth, (user) => {
   currentUser = user;
 
@@ -634,6 +673,7 @@ onAuthStateChanged(auth, (user) => {
     if (!isApproved(user)) {
       el.appMain.hidden = true;
       el.addTaskBtn.hidden = true;
+      el.editorSelect.hidden = true;
       el.accessDeniedMessage.textContent =
         `Signed in as ${user.email}. This dashboard is limited to approved accounts — ask an admin to add your email if you believe this is a mistake.`;
       el.accessDeniedScreen.hidden = false;
@@ -643,6 +683,7 @@ onAuthStateChanged(auth, (user) => {
 
     el.accessDeniedScreen.hidden = true;
     el.appMain.hidden = false;
+    el.editorSelect.hidden = false;
     setView('table');
     subscribeToTasks();
   } else {
@@ -652,6 +693,7 @@ onAuthStateChanged(auth, (user) => {
     el.accessDeniedScreen.hidden = true;
     el.appMain.hidden = true;
     el.addTaskBtn.hidden = true;
+    el.editorSelect.hidden = true;
     el.userInfo.hidden = true;
     tasks = [];
     render();
