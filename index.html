@@ -3,102 +3,146 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Task Tracker</title>
+<title>Weekly Ops Dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header class="app-header">
-  <h1>Task Tracker</h1>
-  <div class="header-right">
-    <div id="userInfo" class="user-info" hidden>
-      <span id="userLabel" class="user-label"></span>
-      <button id="signOutBtn" class="btn btn-secondary">Sign Out</button>
+<div class="shell">
+
+  <header class="app-header">
+    <div>
+      <h1>Weekly Ops Dashboard</h1>
+      <p class="app-subtitle">Task tracking &amp; weekly reporting — synced via Firebase</p>
     </div>
-    <button id="addTaskBtn" class="btn btn-primary" hidden>+ Add Task</button>
+    <div class="header-right">
+      <div id="userInfo" class="user-info" hidden>
+        <span id="userLabel" class="user-label"></span>
+        <button id="signOutBtn" class="btn btn-secondary">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <p id="errorBanner" class="error-banner" hidden></p>
+
+  <div id="loadingScreen" class="status-screen">
+    <p>Checking sign-in status...</p>
   </div>
-</header>
 
-<p id="errorBanner" class="error-banner" hidden></p>
+  <div id="authScreen" class="status-screen" hidden>
+    <div class="auth-card">
+      <h2>Sign in to continue</h2>
+      <p>Sign in with your Google account to view and manage shared tasks.</p>
+      <button id="signInBtn" class="btn btn-primary">Sign in with Google</button>
+    </div>
+  </div>
 
-<div id="loadingScreen" class="status-screen">
-  <p>Checking sign-in status...</p>
+  <div id="accessDeniedScreen" class="status-screen" hidden>
+    <div class="auth-card">
+      <h2>Access denied</h2>
+      <p id="accessDeniedMessage">This dashboard is limited to approved accounts.</p>
+      <button id="accessDeniedSignOutBtn" class="btn btn-secondary">Sign Out</button>
+    </div>
+  </div>
+
+  <main id="appMain" hidden>
+
+    <section class="summary">
+      <div class="summary-card total">
+        <span class="summary-count" id="countTotal">0</span>
+        <span class="summary-label">Total Tasks</span>
+      </div>
+      <div class="summary-card todo">
+        <span class="summary-count" id="countTodoPending">0</span>
+        <span class="summary-label">To Do / Pending</span>
+      </div>
+      <div class="summary-card progress">
+        <span class="summary-count" id="countInProgress">0</span>
+        <span class="summary-label">In Progress</span>
+      </div>
+      <div class="summary-card done">
+        <span class="summary-count" id="countCompleted">0</span>
+        <span class="summary-label">Completed</span>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <div class="filters">
+        <label>Week / Date
+          <select id="filterWeek"><option value="">All</option></select>
+        </label>
+        <label>Project
+          <select id="filterProject"><option value="">All</option></select>
+        </label>
+        <label>Status
+          <select id="filterStatus">
+            <option value="">All</option>
+            <option value="To Do">To Do</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Pending">Pending</option>
+          </select>
+        </label>
+        <label>Priority
+          <select id="filterPriority">
+            <option value="">All</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+          </select>
+        </label>
+        <button class="btn-text" id="clearFiltersBtn">Clear filters</button>
+      </div>
+
+      <div class="action-row">
+        <div class="view-toggle" role="tablist" aria-label="Dashboard view">
+          <button id="viewTableBtn" class="active" role="tab" aria-selected="true">Table View</button>
+          <button id="viewReportBtn" role="tab" aria-selected="false">Weekly Report View</button>
+        </div>
+        <button class="btn btn-primary" id="addTaskBtn" hidden>+ Add Task</button>
+      </div>
+    </section>
+
+    <section class="panel" id="tableView">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Task Name</th>
+              <th>Project</th>
+              <th>Week / Date</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>Due Date</th>
+            </tr>
+          </thead>
+          <tbody id="taskTableBody"></tbody>
+        </table>
+      </div>
+      <p class="empty-state" id="emptyState" hidden>No tasks match the current filters.</p>
+    </section>
+
+    <section class="panel report-panel" id="reportView" hidden>
+      <div class="report-toolbar">
+        <div>
+          <h2>Weekly Report</h2>
+          <p id="reportSubtitle">Reflects the filters selected above.</p>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-secondary" id="copyReportBtn">Copy as Text</button>
+          <button class="btn btn-secondary" id="printReportBtn">Print</button>
+        </div>
+      </div>
+      <div id="reportBody"></div>
+      <p class="empty-state" id="reportEmptyState" hidden>No tasks match the current filters.</p>
+    </section>
+
+  </main>
+
 </div>
 
-<div id="authScreen" class="status-screen" hidden>
-  <div class="auth-card">
-    <h2>Sign in to continue</h2>
-    <p>Sign in with your Google account to view and manage shared tasks.</p>
-    <button id="signInBtn" class="btn btn-primary">Sign in with Google</button>
-  </div>
-</div>
-
-<main id="appMain" hidden>
-
-  <section class="summary" id="summary">
-    <div class="summary-card">
-      <span class="summary-count" id="countTotal">0</span>
-      <span class="summary-label">Total Tasks</span>
-    </div>
-    <div class="summary-card">
-      <span class="summary-count" id="countTodo">0</span>
-      <span class="summary-label">To Do</span>
-    </div>
-    <div class="summary-card">
-      <span class="summary-count" id="countInProgress">0</span>
-      <span class="summary-label">In Progress</span>
-    </div>
-    <div class="summary-card">
-      <span class="summary-count" id="countCompleted">0</span>
-      <span class="summary-label">Completed</span>
-    </div>
-  </section>
-
-  <section class="filters">
-    <label>
-      Status
-      <select id="filterStatus">
-        <option value="">All</option>
-        <option value="To Do">To Do</option>
-        <option value="In Progress">In Progress</option>
-        <option value="Completed">Completed</option>
-        <option value="Pending">Pending</option>
-      </select>
-    </label>
-    <label>
-      Project
-      <select id="filterProject">
-        <option value="">All</option>
-      </select>
-    </label>
-  </section>
-
-  <section class="task-list-wrapper">
-    <table class="task-table" id="taskTable">
-      <thead>
-        <tr>
-          <th>Task Name</th>
-          <th>Project</th>
-          <th>Week / Date</th>
-          <th>Status</th>
-          <th>Priority</th>
-          <th>Due Date</th>
-          <th>Work Done</th>
-          <th>Validation</th>
-          <th>Links</th>
-          <th>Notes / Next Steps</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="taskTableBody">
-      </tbody>
-    </table>
-    <p id="emptyState" class="empty-state" hidden>No tasks yet. Click "Add Task" to create one.</p>
-  </section>
-
-</main>
-
-<div id="taskModal" class="modal-overlay" hidden>
+<div class="modal-overlay" id="taskModal" hidden>
   <div class="modal">
     <h2 id="modalTitle">Add Task</h2>
     <form id="taskForm">
@@ -129,7 +173,7 @@
         <label>Priority
           <select id="taskPriority">
             <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
+            <option value="Medium" selected>Medium</option>
             <option value="High">High</option>
           </select>
         </label>
@@ -160,6 +204,41 @@
         <button type="submit" class="btn btn-primary">Save Task</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="detailsModal" hidden>
+  <div class="modal details-modal">
+    <div class="details-head">
+      <div>
+        <h2 id="detailsName">Task</h2>
+        <div class="details-meta" id="detailsMeta"></div>
+      </div>
+      <button type="button" class="btn-text" id="detailsCloseX" aria-label="Close">Close</button>
+    </div>
+
+    <div class="detail-field">
+      <span class="detail-label">Work Done</span>
+      <p id="detailsWorkDone" class="detail-value"></p>
+    </div>
+    <div class="detail-field">
+      <span class="detail-label">Validation</span>
+      <p id="detailsValidation" class="detail-value"></p>
+    </div>
+    <div class="detail-field">
+      <span class="detail-label">Links</span>
+      <p id="detailsLinks" class="detail-value"></p>
+    </div>
+    <div class="detail-field">
+      <span class="detail-label">Notes / Next Steps</span>
+      <p id="detailsNotes" class="detail-value"></p>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-danger" id="detailsDeleteBtn" style="margin-right:auto">Delete Task</button>
+      <button type="button" class="btn btn-secondary" id="detailsCloseBtn">Close</button>
+      <button type="button" class="btn btn-primary" id="detailsEditBtn">Edit Task</button>
+    </div>
   </div>
 </div>
 
